@@ -13,10 +13,10 @@ pub struct File {
     name: String
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct AnalyzedFile {
     file: File,
-    findings: Vec<String>
+    findings: Vec<analyzer::Finding>
 }
 
 #[derive(Deserialize)]
@@ -112,6 +112,7 @@ mod test {
   use rocket::http::{Status, ContentType};
   extern crate serde_json;
   use self::serde_json::Value;
+  use super::*;
 
   #[test]
   fn status() {
@@ -167,6 +168,11 @@ mod test {
 
     client.post("/analyzer")
         .header(ContentType::JSON)
+        .body(r#"{ "analyzer": "INFO" }"#)
+        .dispatch();
+
+    client.post("/analyzer")
+        .header(ContentType::JSON)
         .body(r#"{ "analyzer": "ERROR" }"#)
         .dispatch();
 
@@ -181,12 +187,16 @@ mod test {
 
     let mut response = client.get(format!("/file/{}", id)).header(ContentType::JSON).dispatch();
     assert_eq!(response.status(), Status::Ok);
-    let file_response: Value = serde_json::from_str(&response.body_string().unwrap()).unwrap();
+    let file_response: AnalyzedFile = serde_json::from_str(&response.body_string().unwrap()).unwrap();
 
-    assert_eq!(file_response["file"]["name"].as_str(), Some("support_bundle/1354/container/foo.log"));
-    assert_eq!(file_response["file"]["content"].as_str(), Some("INFO: started application\nERROR: license expired on 23-04-2017"));
+    assert_eq!(file_response.file.name, "support_bundle/1354/container/foo.log");
+    assert_eq!(file_response.file.content, "INFO: started application\nERROR: license expired on 23-04-2017");
+    assert_eq!(file_response.findings[0].line_number, 1);
+    assert_eq!(file_response.findings[0].line, "INFO: started application");
 
-    assert_eq!(file_response["findings"][0].as_str(), Some("ERROR: license expired on 23-04-2017"));
+    assert_eq!(file_response.findings[1].line_number, 2);
+    assert_eq!(file_response.findings[1].line, "ERROR: license expired on 23-04-2017");
+
   }
 
   #[test]
