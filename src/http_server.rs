@@ -72,6 +72,13 @@ pub fn get(uuid: String, file_list: State<Mutex<WatsonState>>) -> Option<Json<An
   }
 }
 
+#[post("/analyzer", format = "application/json", data = "<analyzer>")]
+pub fn add_analyzer(analyzer: Json<CreateAnalyzer>, state: State<Mutex<WatsonState>>) -> Json<Value> {
+  let mut locked_state = state.lock().expect("map lock.");
+  locked_state.analyzers.insert(analyzer.analyzer.clone());
+  Json(json!({ "status": "ok" }))
+}
+
 #[error(404)]
 fn not_found() -> Json<Value> {
   Json(json!({
@@ -82,7 +89,7 @@ fn not_found() -> Json<Value> {
 
 pub fn rocket() -> Rocket {
   rocket::ignite()
-      .mount("/", routes![status, add_file, get])
+      .mount("/", routes![status, add_file, get, add_analyzer])
       .catch(errors![not_found])
       .manage(Mutex::new(WatsonState::new()))
 }
@@ -164,5 +171,15 @@ mod test {
     assert_eq!(file_response["file"]["content"].as_str(), Some("INFO: started application\nERROR: license expired on 23-04-2017"));
 
     assert_eq!(file_response["findings"][0].as_str(), Some("ERROR: license expired on 23-04-2017"));
+  }
+
+  #[test]
+  fn add_new_analyzer() {
+    let client = Client::new(rocket()).expect("valid rocket instance");
+    let response = client.post("/analyzer")
+        .header(ContentType::JSON)
+        .body(r#"{ "analyzer": "Warning" }"#)
+        .dispatch();
+    assert_eq!(response.status(), Status::Ok);
   }
 }
