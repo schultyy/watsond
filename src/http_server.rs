@@ -5,10 +5,18 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use uuid::Uuid;
 
+use analyzer;
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct File {
     content: String,
     name: String
+}
+
+#[derive(Serialize)]
+pub struct AnalyzedFile {
+    file: File,
+    findings: Vec<String>
 }
 
 type ID = Uuid;
@@ -29,10 +37,17 @@ pub fn add_file(file: Json<File>, file_list: State<FileList>) -> Json<Value> {
 }
 
 #[get("/file/<uuid>", format = "application/json")]
-pub fn get(uuid: String, file_list: State<FileList>) -> Option<Json<File>> {
+pub fn get(uuid: String, file_list: State<FileList>) -> Option<Json<AnalyzedFile>> {
   if let Ok(file_uuid) = Uuid::parse_str(&uuid) {
     let hashmap = file_list.lock().unwrap();
-    hashmap.get(&file_uuid).map(|file| { Json(file.clone()) })
+    hashmap.get(&file_uuid).map(|file| {
+      Json(
+        AnalyzedFile {
+          file: file.clone(),
+          findings: analyzer::analyze(&file.content)
+        }
+      )
+    })
   }
   else {
     None
@@ -100,8 +115,8 @@ mod test {
     assert_eq!(response.status(), Status::Ok);
     let file_response: Value = serde_json::from_str(&response.body_string().unwrap()).unwrap();
 
-    assert_eq!(file_response["name"].as_str(), Some("support_bundle/1354/container/foo.log"));
-    assert_eq!(file_response["content"].as_str(), Some("Test1234"));
+    assert_eq!(file_response["file"]["name"].as_str(), Some("support_bundle/1354/container/foo.log"));
+    assert_eq!(file_response["file"]["content"].as_str(), Some("Test1234"));
   }
 
   #[test]
@@ -109,6 +124,27 @@ mod test {
     let client = Client::new(rocket()).expect("valid rocket instance");
     let response = client.get(format!("/file/{}", "abc")).header(ContentType::JSON).dispatch();
     assert_eq!(response.status(), Status::NotFound);
+  }
 
+  #[test]
+  fn return_file_with_findings() {
+    let client = Client::new(rocket()).expect("valid rocket instance");
+    let mut response = client.post("/file")
+        .header(ContentType::JSON)
+        .body(r#"{ "name": "support_bundle/1354/container/foo.log", "content": "INFO: started application\nERROR: license expired on 23-04-2017" }"#)
+        .dispatch();
+
+    assert_eq!(response.status(), Status::Ok);
+    let v: Value = serde_json::from_str(&response.body_string().unwrap()).unwrap();
+    let id = Uuid::parse_str(v["id"].as_str().unwrap()).unwrap();
+
+    let mut response = client.get(format!("/file/{}", id)).header(ContentType::JSON).dispatch();
+    assert_eq!(response.status(), Status::Ok);
+    let file_response: Value = serde_json::from_str(&response.body_string().unwrap()).unwrap();
+
+    assert_eq!(file_response["file"]["name"].as_str(), Some("support_bundle/1354/container/foo.log"));
+    assert_eq!(file_response["file"]["content"].as_str(), Some("INFO: started application\nERROR: license expired on 23-04-2017"));
+
+    assert_eq!(file_response["findings"][0].as_str(), Some("ERROR: license expired on 23-04-2017"));
   }
 }
