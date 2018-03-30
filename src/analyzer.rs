@@ -1,20 +1,17 @@
-use regex::Regex;
+use regex::RegexSet;
+use std::collections::HashSet;
 
-pub fn analyze(file: &str) -> Vec<String> {
+pub fn analyze(file: &str, analyzers: &HashSet<String>) -> Vec<String> {
   let mut analyzer_findings = vec!();
 
+  let compiled_regexes = RegexSet::new(analyzers).unwrap();
+
   for line in file.split("\n") {
-    if is_match(line) {
+    let matches: Vec<_> = compiled_regexes.matches(line).into_iter().collect();
+    if matches.len() > 0 {
       analyzer_findings.push(line.to_string());
     }
   }
 
   analyzer_findings
-}
-
-fn is_match(text: &str) -> bool {
-    lazy_static! {
-        static ref RE: Regex = Regex::new(r"ERROR").unwrap();
-    }
-    RE.is_match(text)
 }

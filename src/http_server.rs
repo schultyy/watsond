@@ -62,7 +62,7 @@ pub fn get_file(uuid: String, file_list: State<Mutex<WatsonState>>) -> Option<Js
       Json(
         AnalyzedFile {
           file: file.clone(),
-          findings: analyzer::analyze(&file.content)
+          findings: analyzer::analyze(&file.content, &locked_state.analyzers)
         }
       )
     })
@@ -164,6 +164,12 @@ mod test {
   #[test]
   fn return_file_with_findings() {
     let client = Client::new(rocket()).expect("valid rocket instance");
+
+    client.post("/analyzer")
+        .header(ContentType::JSON)
+        .body(r#"{ "analyzer": "ERROR" }"#)
+        .dispatch();
+
     let mut response = client.post("/file")
         .header(ContentType::JSON)
         .body(r#"{ "name": "support_bundle/1354/container/foo.log", "content": "INFO: started application\nERROR: license expired on 23-04-2017" }"#)
