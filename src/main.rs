@@ -5,5 +5,5 @@ extern crate rocket;
 mod http_server;
 
 fn main() {
-  rocket::ignite().mount("/", routes![http_server::status]).launch();
+  http_server::rocket().launch();
 }
