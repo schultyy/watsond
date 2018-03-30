@@ -55,7 +55,7 @@ pub fn add_file(file: Json<File>, state: State<Mutex<WatsonState>>) -> Json<Valu
 }
 
 #[get("/file/<uuid>", format = "application/json")]
-pub fn get(uuid: String, file_list: State<Mutex<WatsonState>>) -> Option<Json<AnalyzedFile>> {
+pub fn get_file(uuid: String, file_list: State<Mutex<WatsonState>>) -> Option<Json<AnalyzedFile>> {
   if let Ok(file_uuid) = Uuid::parse_str(&uuid) {
     let locked_state = file_list.lock().unwrap();
     locked_state.file_list.get(&file_uuid).map(|file| {
@@ -89,7 +89,7 @@ fn not_found() -> Json<Value> {
 
 pub fn rocket() -> Rocket {
   rocket::ignite()
-      .mount("/", routes![status, add_file, get, add_analyzer])
+      .mount("/", routes![status, add_file, get_file, add_analyzer])
       .catch(errors![not_found])
       .manage(Mutex::new(WatsonState::new()))
 }
