@@ -1,7 +1,7 @@
 use rocket;
 use rocket::{Rocket, State};
 use rocket_contrib::{Json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use uuid::Uuid;
 
@@ -19,8 +19,26 @@ pub struct AnalyzedFile {
     findings: Vec<String>
 }
 
+#[derive(Deserialize)]
+pub struct CreateAnalyzer {
+  analyzer: String
+}
+
+pub struct WatsonState {
+    file_list: HashMap<ID, File>,
+    analyzers: HashSet<String>
+}
+
+impl WatsonState {
+  pub fn new() -> WatsonState {
+    WatsonState {
+      file_list: HashMap::<ID, File>::new(),
+      analyzers: HashSet::new()
+    }
+  }
+}
+
 type ID = Uuid;
-type FileList = Mutex<HashMap<ID, File>>;
 
 #[get("/status")]
 pub fn status() -> &'static str {
@@ -28,19 +46,19 @@ pub fn status() -> &'static str {
 }
 
 #[post("/file", format = "application/json", data = "<file>")]
-pub fn add_file(file: Json<File>, file_list: State<FileList>) -> Json<Value> {
-  let mut file_list = file_list.lock().expect("map lock.");
+pub fn add_file(file: Json<File>, state: State<Mutex<WatsonState>>) -> Json<Value> {
+  let mut locked_state = state.lock().expect("map lock.");
   let new_id = Uuid::new_v4();
-  file_list.insert(new_id, file.0);
+  locked_state.file_list.insert(new_id, file.0);
 
   Json(json!({ "status": "ok", "id": new_id.to_string() }))
 }
 
 #[get("/file/<uuid>", format = "application/json")]
-pub fn get(uuid: String, file_list: State<FileList>) -> Option<Json<AnalyzedFile>> {
+pub fn get(uuid: String, file_list: State<Mutex<WatsonState>>) -> Option<Json<AnalyzedFile>> {
   if let Ok(file_uuid) = Uuid::parse_str(&uuid) {
-    let hashmap = file_list.lock().unwrap();
-    hashmap.get(&file_uuid).map(|file| {
+    let locked_state = file_list.lock().unwrap();
+    locked_state.file_list.get(&file_uuid).map(|file| {
       Json(
         AnalyzedFile {
           file: file.clone(),
@@ -66,7 +84,7 @@ pub fn rocket() -> Rocket {
   rocket::ignite()
       .mount("/", routes![status, add_file, get])
       .catch(errors![not_found])
-      .manage(Mutex::new(HashMap::<ID, File>::new()))
+      .manage(Mutex::new(WatsonState::new()))
 }
 
 #[cfg(test)]
