@@ -79,6 +79,16 @@ pub fn add_analyzer(analyzer: Json<CreateAnalyzer>, state: State<Mutex<WatsonSta
   Json(json!({ "status": "ok" }))
 }
 
+#[get("/analyzers", format = "application/json")]
+pub fn get_analyzers(state: State<Mutex<WatsonState>>) -> Json<Value> {
+  let locked_state = state.lock().expect("map lock.");
+  let analyzers = locked_state.analyzers
+                    .iter()
+                    .map(|st| st.clone() )
+                    .collect::<Vec<String>>();
+  Json(json!(analyzers))
+}
+
 #[error(404)]
 fn not_found() -> Json<Value> {
   Json(json!({
@@ -89,7 +99,7 @@ fn not_found() -> Json<Value> {
 
 pub fn rocket() -> Rocket {
   rocket::ignite()
-      .mount("/", routes![status, add_file, get_file, add_analyzer])
+      .mount("/", routes![status, add_file, get_file, add_analyzer, get_analyzers])
       .catch(errors![not_found])
       .manage(Mutex::new(WatsonState::new()))
 }
@@ -181,5 +191,36 @@ mod test {
         .body(r#"{ "analyzer": "Warning" }"#)
         .dispatch();
     assert_eq!(response.status(), Status::Ok);
+  }
+
+  #[test]
+  fn get_all_analyzers_when_none_have_been_configured() {
+    let client = Client::new(rocket()).expect("valid rocket instance");
+    let mut response = client.get("/analyzers")
+        .header(ContentType::JSON)
+        .dispatch();
+    assert_eq!(response.status(), Status::Ok);
+    let analyzers_value: Value = serde_json::from_str(&response.body_string().unwrap()).unwrap();
+    let analyzers = analyzers_value.as_array().unwrap();
+    assert!(analyzers.len() == 0);
+  }
+
+  #[test]
+  fn get_all_analyzers() {
+    let client = Client::new(rocket()).expect("valid rocket instance");
+
+    client.post("/analyzer")
+        .header(ContentType::JSON)
+        .body(r#"{ "analyzer": "Warning" }"#)
+        .dispatch();
+
+    let mut response = client.get("/analyzers")
+        .header(ContentType::JSON)
+        .dispatch();
+    assert_eq!(response.status(), Status::Ok);
+    let analyzers_value: Value = serde_json::from_str(&response.body_string().unwrap()).unwrap();
+    let analyzers = analyzers_value.as_array().unwrap();
+    assert!(analyzers.len() == 1);
+    assert_eq!(analyzers[0], "Warning");
   }
 }
