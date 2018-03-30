@@ -1,3 +1,9 @@
+#![feature(plugin)]
+#![plugin(rocket_codegen)]
+
+extern crate rocket;
+mod http_server;
+
 fn main() {
-    println!("Hello, world!");
+  rocket::ignite().mount("/", routes![http_server::status]).launch();
 }
