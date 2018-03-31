@@ -1,17 +1,12 @@
 use rocket;
 use rocket::{Rocket, State};
 use rocket_contrib::{Json, Value};
-use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use uuid::Uuid;
 
 use analyzer;
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct File {
-    content: String,
-    name: String
-}
+use serializer;
+use state::{WatsonState, File};
 
 #[derive(Deserialize, Serialize)]
 pub struct AnalyzedFile {
@@ -24,22 +19,6 @@ pub struct CreateAnalyzer {
   analyzer: String
 }
 
-pub struct WatsonState {
-    file_list: HashMap<ID, File>,
-    analyzers: HashSet<String>
-}
-
-impl WatsonState {
-  pub fn new() -> WatsonState {
-    WatsonState {
-      file_list: HashMap::<ID, File>::new(),
-      analyzers: HashSet::new()
-    }
-  }
-}
-
-type ID = Uuid;
-
 #[get("/status")]
 pub fn status() -> &'static str {
   "alive"
@@ -50,6 +29,7 @@ pub fn add_file(file: Json<File>, state: State<Mutex<WatsonState>>) -> Json<Valu
   let mut locked_state = state.lock().expect("map lock.");
   let new_id = Uuid::new_v4();
   locked_state.file_list.insert(new_id, file.0);
+  serializer::save_to_disk(&locked_state);
 
   Json(json!({ "status": "ok", "id": new_id.to_string() }))
 }
@@ -97,11 +77,11 @@ fn not_found() -> Json<Value> {
   }))
 }
 
-pub fn rocket() -> Rocket {
+pub fn rocket(state: WatsonState) -> Rocket {
   rocket::ignite()
       .mount("/", routes![status, add_file, get_file, add_analyzer, get_analyzers])
       .catch(errors![not_found])
-      .manage(Mutex::new(WatsonState::new()))
+      .manage(Mutex::new(state))
 }
 
 #[cfg(test)]

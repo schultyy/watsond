@@ -6,10 +6,20 @@
 extern crate rocket;
 extern crate uuid;
 extern crate regex;
+extern crate bincode;
 
 mod http_server;
 mod analyzer;
+mod serializer;
+mod state;
+
+use state::WatsonState;
 
 fn main() {
-  http_server::rocket().launch();
+  if let Ok(watson_state) = serializer::read_from_disk() {
+    http_server::rocket(watson_state).launch();
+  } else {
+    http_server::rocket(WatsonState::new()).launch();
+  }
+
 }
