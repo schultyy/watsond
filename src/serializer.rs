@@ -24,7 +24,7 @@ pub fn save_to_disk(state: &WatsonState) -> Result<(), Error> {
 }
 
 pub fn read_from_disk() -> Result<WatsonState, Error> {
-  let mut f = File::open("foo.bin")?;
+  let mut f = File::open("watson_state.bin")?;
   let mut buffer = Vec::new();
   f.read_to_end(&mut buffer)?;
   let decoded: SerializableState = deserialize(&buffer[..]).unwrap();
@@ -38,7 +38,7 @@ fn write_file(_encoded: Vec<u8>) -> Result<(), Error> {
 
 #[cfg(not(test))]
 fn write_file(encoded: Vec<u8>) -> Result<(), Error> {
-  let mut file = File::create("foo.bin")?;
+  let mut file = File::create("watson_state.bin")?;
   file.write_all(&encoded)?;
   Ok(())
 }
