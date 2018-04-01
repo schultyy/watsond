@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use analyzer;
 use serializer;
-use state::{WatsonState, File};
+use state::{WatsonState, File, FileMetadata};
 
 #[derive(Deserialize, Serialize)]
 pub struct AnalyzedFile {
@@ -32,6 +32,19 @@ pub fn add_file(file: Json<File>, state: State<Mutex<WatsonState>>) -> Json<Valu
   serializer::save_to_disk(&locked_state);
 
   Json(json!({ "status": "ok", "id": new_id.to_string() }))
+}
+
+#[get("/files", format = "application/json")]
+pub fn get_files(file_list: State<Mutex<WatsonState>>) -> Json<Vec<FileMetadata>> {
+  let locked_state = file_list.lock().unwrap();
+  let mut result_set = vec!();
+  for (id, file) in &locked_state.file_list {
+    result_set.push(FileMetadata{
+      id: id.to_string(),
+      name: file.name.clone()
+    });
+  }
+  Json(result_set)
 }
 
 #[get("/file/<uuid>", format = "application/json")]
@@ -79,7 +92,7 @@ fn not_found() -> Json<Value> {
 
 pub fn rocket(state: WatsonState) -> Rocket {
   rocket::ignite()
-      .mount("/", routes![status, add_file, get_file, add_analyzer, get_analyzers])
+      .mount("/", routes![status, add_file, get_files, get_file, add_analyzer, get_analyzers])
       .catch(errors![not_found])
       .manage(Mutex::new(state))
 }
@@ -181,7 +194,44 @@ mod test {
 
     assert_eq!(file_response.findings[1].line_number, 2);
     assert_eq!(file_response.findings[1].line, "ERROR: license expired on 23-04-2017");
+  }
 
+  #[test]
+  fn return_all_files() {
+    let client = construct_client();
+
+    client.post("/analyzer")
+        .header(ContentType::JSON)
+        .body(r#"{ "analyzer": "INFO" }"#)
+        .dispatch();
+
+    client.post("/analyzer")
+        .header(ContentType::JSON)
+        .body(r#"{ "analyzer": "ERROR" }"#)
+        .dispatch();
+
+    client.post("/file")
+        .header(ContentType::JSON)
+        .body(r#"{ "name": "support_bundle/1354/container/foo.log", "content": "INFO: started application\nERROR: license expired on 23-04-2017" }"#)
+        .dispatch();
+
+    client.post("/file")
+        .header(ContentType::JSON)
+        .body(r#"{ "name": "support_bundle/1354/container/bar.log", "content": "INFO: started application\nERROR: license expired on 23-04-2017" }"#)
+        .dispatch();
+
+    let mut response = client.get("/files")
+                          .dispatch();
+
+    assert_eq!(response.status(), Status::Ok);
+
+    let all_files_value: Value = serde_json::from_str(&response.body_string().unwrap()).unwrap();
+    let all_files = all_files_value.as_array().unwrap();
+    let first_file = &all_files[0];
+    assert_eq!(all_files.len(), 2);
+
+    assert!(&first_file["id"].as_str().unwrap().len() > &0);
+    assert!(&first_file["name"].as_str().unwrap().len() > &0);
   }
 
   #[test]

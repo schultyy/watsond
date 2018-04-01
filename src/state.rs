@@ -9,6 +9,12 @@ pub struct File {
   pub name: String
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct FileMetadata {
+  pub id: String,
+  pub name: String
+}
+
 pub struct WatsonState {
   pub file_list: HashMap<ID, File>,
   pub analyzers: HashSet<String>
