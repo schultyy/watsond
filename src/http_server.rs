@@ -92,7 +92,7 @@ fn not_found() -> Json<Value> {
 
 pub fn rocket(state: WatsonState) -> Rocket {
   rocket::ignite()
-      .mount("/", routes![status, add_file, get_files, get_file, add_analyzer, get_analyzers])
+      .mount("/api", routes![status, add_file, get_files, get_file, add_analyzer, get_analyzers])
       .catch(errors![not_found])
       .manage(Mutex::new(state))
 }
