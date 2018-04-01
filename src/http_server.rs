@@ -94,9 +94,14 @@ mod test {
   use self::serde_json::Value;
   use super::*;
 
+  fn construct_client() -> Client {
+    let client = Client::new(rocket(WatsonState::new())).expect("valid rocket instance");
+    client
+  }
+
   #[test]
   fn status() {
-    let client = Client::new(rocket()).expect("valid rocket instance");
+    let client = construct_client();
     let mut response = client.get("/status").dispatch();
     assert_eq!(response.status(), Status::Ok);
     assert_eq!(response.body_string(), Some("alive".into()));
@@ -104,7 +109,7 @@ mod test {
 
   #[test]
   fn add_file() {
-    let client = Client::new(rocket()).expect("valid rocket instance");
+    let client = construct_client();
     let mut response = client.post("/file")
         .header(ContentType::JSON)
         .body(r#"{ "name": "support_bundle/1354/container/foo.log", "content": "Test1234" }"#)
@@ -117,7 +122,7 @@ mod test {
 
   #[test]
   fn retrieve_existing_file() {
-    let client = Client::new(rocket()).expect("valid rocket instance");
+    let client = construct_client();
     let mut response = client.post("/file")
         .header(ContentType::JSON)
         .body(r#"{ "name": "support_bundle/1354/container/foo.log", "content": "Test1234" }"#)
@@ -137,14 +142,14 @@ mod test {
 
   #[test]
   fn retrieve_nonexisting_file() {
-    let client = Client::new(rocket()).expect("valid rocket instance");
+    let client = construct_client();
     let response = client.get(format!("/file/{}", "abc")).header(ContentType::JSON).dispatch();
     assert_eq!(response.status(), Status::NotFound);
   }
 
   #[test]
   fn return_file_with_findings() {
-    let client = Client::new(rocket()).expect("valid rocket instance");
+    let client = construct_client();
 
     client.post("/analyzer")
         .header(ContentType::JSON)
@@ -181,7 +186,7 @@ mod test {
 
   #[test]
   fn add_new_analyzer() {
-    let client = Client::new(rocket()).expect("valid rocket instance");
+    let client = construct_client();
     let response = client.post("/analyzer")
         .header(ContentType::JSON)
         .body(r#"{ "analyzer": "Warning" }"#)
@@ -191,7 +196,7 @@ mod test {
 
   #[test]
   fn get_all_analyzers_when_none_have_been_configured() {
-    let client = Client::new(rocket()).expect("valid rocket instance");
+    let client = construct_client();
     let mut response = client.get("/analyzers")
         .header(ContentType::JSON)
         .dispatch();
@@ -203,7 +208,7 @@ mod test {
 
   #[test]
   fn get_all_analyzers() {
-    let client = Client::new(rocket()).expect("valid rocket instance");
+    let client = construct_client();
 
     client.post("/analyzer")
         .header(ContentType::JSON)
