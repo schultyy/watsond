@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use analyzer;
 use serializer;
-use state::{WatsonState, File, FileMetadata};
+use state::{WatsonState, File, FileMetadata, Workflow, WorkflowItem};
 
 #[derive(Deserialize, Serialize)]
 pub struct AnalyzedFile {
@@ -17,6 +17,19 @@ pub struct AnalyzedFile {
 #[derive(Deserialize)]
 pub struct CreateAnalyzer {
   analyzer: String
+}
+
+#[derive(Deserialize)]
+pub struct CreateWorkflow {
+  name: String,
+  steps: Vec<CreateWorkflowItem>
+}
+
+#[derive(Deserialize)]
+pub struct CreateWorkflowItem {
+  id: u32,
+  regex: String,
+  context: String
 }
 
 #[get("/status")]
@@ -82,6 +95,29 @@ pub fn get_analyzers(state: State<Mutex<WatsonState>>) -> Json<Value> {
   Json(json!(analyzers))
 }
 
+#[post("/workflow", format = "application/json", data = "<create_workflow>")]
+pub fn create_workflow(create_workflow: Json<CreateWorkflow>, state: State<Mutex<WatsonState>>) -> Json<Value> {
+  let mut locked_state = state.lock().expect("map lock.");
+  let new_id = Uuid::new_v4();
+  locked_state.workflows.insert(new_id, Workflow {
+    name: create_workflow.name.clone(),
+    steps: create_workflow.steps.iter()
+                                .map(|wf| WorkflowItem {
+                                  id: wf.id,
+                                  regex: wf.regex.clone(),
+                                  context: wf.context.clone()
+                                })
+                                .collect()
+  });
+
+  serializer::save_to_disk(&locked_state);
+
+  Json(json!({
+    "status": "Ok",
+    "id": new_id.to_string()
+  }))
+}
+
 #[error(404)]
 fn not_found() -> Json<Value> {
   Json(json!({
@@ -90,9 +126,9 @@ fn not_found() -> Json<Value> {
   }))
 }
 
-pub fn rocket(state: WatsonState) -> Rocket {
+pub fn rocket(mount_point: &str, state: WatsonState) -> Rocket {
   rocket::ignite()
-      .mount("/api", routes![status, add_file, get_files, get_file, add_analyzer, get_analyzers])
+      .mount(mount_point, routes![status, add_file, get_files, get_file, add_analyzer, get_analyzers, create_workflow])
       .catch(errors![not_found])
       .manage(Mutex::new(state))
 }
@@ -108,7 +144,7 @@ mod test {
   use super::*;
 
   fn construct_client() -> Client {
-    let client = Client::new(rocket(WatsonState::new())).expect("valid rocket instance");
+    let client = Client::new(rocket("/", WatsonState::new())).expect("valid rocket instance");
     client
   }
 
@@ -273,5 +309,33 @@ mod test {
     let analyzers = analyzers_value.as_array().unwrap();
     assert!(analyzers.len() == 1);
     assert_eq!(analyzers[0], "Warning");
+  }
+
+  #[test]
+  fn define_workflow() {
+    let client = construct_client();
+
+    let mut response = client.post("/workflow")
+        .header(ContentType::JSON)
+        .body(r#"{
+          "name": "Default Workflow",
+          "steps": [
+            {
+              "id": 1,
+              "regex": "run:received event",
+              "context": "repo=([\\w\\-\\/]+)"
+            },
+            {
+              "id": 2,
+              "regex": "notifier=github_status build=",
+              "context": "repo=([\\w\\-\\/]+)"
+            }
+          ]
+        }"#).dispatch();
+    assert_eq!(response.status(), Status::Ok);
+    let workflow_value: Value = serde_json::from_str(&response.body_string().unwrap()).unwrap();
+    let workflow_json_response = workflow_value.as_object().unwrap();
+    let id = workflow_json_response["id"].as_str().unwrap();
+    assert!(id.len() > 0);
   }
 }

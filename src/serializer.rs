@@ -13,8 +13,22 @@ pub struct SerializableFile {
 }
 
 #[derive(Serialize, Deserialize)]
+pub struct SerializableWorkflowItem {
+  pub id: u32,
+  pub regex: String,
+  pub context: String
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SerializableWorkflow {
+  pub name: String,
+  pub steps: Vec<SerializableWorkflowItem>
+}
+
+#[derive(Serialize, Deserialize)]
 struct SerializableState {
   pub file_list: HashMap<String, SerializableFile>,
+  pub workflow_list: HashMap<String, SerializableWorkflow>,
   pub analyzers: HashSet<String>
 }
 
@@ -50,13 +64,30 @@ fn to_serializable_file(file: &state::File) -> SerializableFile {
   }
 }
 
+fn to_serializable_workflow(workflow: &state::Workflow) -> SerializableWorkflow {
+  SerializableWorkflow {
+    name: workflow.name.clone(),
+    steps: workflow.steps
+                      .iter()
+                      .map(|wf| SerializableWorkflowItem { id: wf.id.clone(), regex: wf.regex.clone(), context: wf.context.clone() })
+                      .collect()
+  }
+}
+
 fn to_serializable_state(state: &WatsonState) -> SerializableState {
   let mut file_list = HashMap::new();
   for (key, value) in &state.file_list {
     file_list.insert(key.to_string(), to_serializable_file(value));
   }
 
+  let mut workflow_list = HashMap::new();
+
+  for (key, value) in &state.workflows {
+    workflow_list.insert(key.to_string(), to_serializable_workflow(value));
+  }
+
   SerializableState {
+    workflow_list: workflow_list,
     file_list: file_list,
     analyzers: state.analyzers.clone()
   }
@@ -70,8 +101,26 @@ fn to_watson_state(state: SerializableState) -> WatsonState {
     }
   }
 
+  let mut workflow_list = HashMap::new();
+  for (key, value) in &state.workflow_list {
+    if let Ok(uuid) = Uuid::parse_str(&key) {
+      workflow_list.insert(uuid, state::Workflow {
+        name: value.name.clone(),
+        steps: value.steps
+                      .iter()
+                      .map(|st| state::WorkflowItem {
+                        id: st.id,
+                        regex: st.regex.clone(),
+                        context: st.context.clone()
+                      })
+                      .collect()
+      });
+    }
+  }
+
   WatsonState {
     file_list: file_list,
+    workflows: workflow_list,
     analyzers: state.analyzers.clone()
   }
 }

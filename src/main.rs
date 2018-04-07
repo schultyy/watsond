@@ -16,10 +16,11 @@ mod state;
 use state::WatsonState;
 
 fn main() {
+  let mount_point = "/api";
   if let Ok(watson_state) = serializer::read_from_disk() {
-    http_server::rocket(watson_state).launch();
+    http_server::rocket(mount_point, watson_state).launch();
   } else {
-    http_server::rocket(WatsonState::new()).launch();
+    http_server::rocket(mount_point, WatsonState::new()).launch();
   }
 
 }
